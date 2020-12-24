@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 
 #define FILENAME "orderedProc.temp"
 
@@ -49,6 +50,7 @@ int main(int argc, char const *argv[])
     int n = 1; //the process number in the specified tree order
     int numOfLines; 
     pid_t pid;
+    int status;
 
     FILE * fp;
     fp = fopen (FILENAME, "w");
@@ -64,7 +66,7 @@ int main(int argc, char const *argv[])
         if ( pid == -1)
         {
             perror("Impossible de créer le fils\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
         else if (pid == 0)
         {
@@ -72,6 +74,11 @@ int main(int argc, char const *argv[])
             writeNumInFile(n);
             break;
         }
+        else
+        {
+            waitpid(pid, &status, WNOHANG);
+        }
+        
 
 
     }
@@ -89,8 +96,7 @@ int main(int argc, char const *argv[])
                     if (!(numOfLines > 0))
                     {
                         perror("Problème avec le fichier de suivi des processus\n");
-                        printf("Il est conseillé de stopper le programme\n");
-                        sleep(3);
+                        exit(EXIT_FAILURE);
                     }
                     sleep(1);
                     numOfLines = countLinesInFile();
@@ -102,13 +108,17 @@ int main(int argc, char const *argv[])
                     if ( pid == -1)
                     {
                         perror("Impossible de créer le fils\n");
-                        exit(-1);
+                        exit(EXIT_FAILURE);
                     }
                     else if (pid == 0)
                     {
                         printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", n, getpid(), getppid());
                         writeNumInFile(n);
                         break;
+                    }
+                    else
+                    {
+                        waitpid(pid, &status, WNOHANG);
                     }
                 }
 
@@ -120,8 +130,7 @@ int main(int argc, char const *argv[])
                     if (!(numOfLines > 0))
                     {
                         perror("Problème avec le fichier de suivi des processus\n");
-                        printf("Il est conseillé de stopper le programme\n");
-                        sleep(3);
+                        exit(EXIT_FAILURE);
                     }   
                     sleep(1);
                     numOfLines = countLinesInFile();
@@ -133,13 +142,17 @@ int main(int argc, char const *argv[])
                     if ( pid == -1)
                     {
                         perror("Impossible de créer le fils\n");
-                        exit(-1);
+                        exit(EXIT_FAILURE);
                     }
                     else if (pid == 0)
                     {
                         printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", n, getpid(), getppid());
                         writeNumInFile(n);
                         break;
+                    }
+                    else
+                    {
+                        waitpid(pid, &status, WNOHANG);
                     }
                 }
                 break;
@@ -150,8 +163,7 @@ int main(int argc, char const *argv[])
                     if (!(numOfLines > 0))
                     {
                         perror("Problème avec le fichier de suivi des processus\n");
-                        printf("Il est conseillé de stopper le programme\n");
-                        sleep(3);
+                        exit(EXIT_FAILURE);
                     } 
                     sleep(1);
                     numOfLines = countLinesInFile();  
@@ -163,13 +175,17 @@ int main(int argc, char const *argv[])
                     if ( pid == -1)
                     {
                         perror("Impossible de créer le fils\n");
-                        exit(-1);
+                        exit(EXIT_FAILURE);
                     }
                     else if (pid == 0)
                     {
                         printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", n, getpid(), getppid());
                         writeNumInFile(n);
                         break;
+                    }
+                    else
+                    {
+                        waitpid(pid, &status, WNOHANG);
                     }
                 }
                 break;
@@ -190,8 +206,7 @@ int main(int argc, char const *argv[])
                         if (!(numOfLines > 0))
                         {
                             perror("Problème avec le fichier de suivi des processus\n");
-                            printf("Il est conseillé de stopper le programme\n");
-                            sleep(3);
+                            exit(EXIT_FAILURE);
                         }
                         sleep(1);
                         numOfLines = countLinesInFile(); 
@@ -203,13 +218,17 @@ int main(int argc, char const *argv[])
                         if ( pid == -1)
                         {
                             perror("Impossible de créer le fils\n");
-                            exit(-1);
+                            exit(EXIT_FAILURE);
                         }
                         else if (pid == 0)
                         {
                             printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", n, getpid(), getppid());
                             writeNumInFile(n);
                             break;
+                        }
+                        else
+                        {
+                            waitpid(pid, &status, WNOHANG);
                         }
                     }
 
@@ -221,8 +240,7 @@ int main(int argc, char const *argv[])
                         if (!(numOfLines > 0))
                         {
                             perror("Problème avec le fichier de suivi des processus\n");
-                            printf("Il est conseillé de stopper le programme\n");
-                            sleep(3);
+                            exit(EXIT_FAILURE);
                         }  
                         sleep(1);
                         numOfLines = countLinesInFile(); 
@@ -234,13 +252,17 @@ int main(int argc, char const *argv[])
                         if ( pid == -1)
                         {
                             perror("Impossible de créer le fils\n");
-                            exit(-1);
+                            exit(EXIT_FAILURE);
                         }
                         else if (pid == 0)
                         {
                             printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", n, getpid(), getppid());
                             writeNumInFile(n);
                             break;
+                        }
+                        else
+                        {
+                            waitpid(pid, &status, WNOHANG);
                         }
                     }
                     break;
@@ -251,8 +273,7 @@ int main(int argc, char const *argv[])
                             if (!(numOfLines > 0))
                             {
                                 perror("Problème avec le fichier de suivi des processus\n");
-                                printf("Il est conseillé de stopper le programme\n");
-                                sleep(3);
+                                exit(EXIT_FAILURE);
                             }   
                             sleep(1);
                             numOfLines = countLinesInFile();
@@ -264,13 +285,17 @@ int main(int argc, char const *argv[])
                             if ( pid == -1)
                             {
                                 perror("Impossible de créer le fils\n");
-                                exit(-1);
+                                exit(EXIT_FAILURE);
                             }
                             else if (pid == 0)
                             {
                                 printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", n, getpid(), getppid());
                                 writeNumInFile(n);
                                 break;
+                            }
+                            else
+                            {
+                                waitpid(pid, &status, WNOHANG);
                             }
                         }
 
@@ -285,8 +310,7 @@ int main(int argc, char const *argv[])
                     if (!(numOfLines > 0))
                     {
                         perror("Problème avec le fichier de suivi des processus\n");
-                        printf("Il est conseillé de stopper le programme\n");
-                        sleep(3);
+                        exit(EXIT_FAILURE);
                     } 
                     sleep(1);
                     numOfLines = countLinesInFile();
@@ -298,7 +322,7 @@ int main(int argc, char const *argv[])
                     if ( pid == -1)
                     {
                         perror("Impossible de créer le fils\n");
-                        exit(-1);
+                        exit(EXIT_FAILURE);
                     }
                     else if (pid == 0)
                     {
@@ -306,6 +330,10 @@ int main(int argc, char const *argv[])
                         writeNumInFile(n);
                         break;
                     }
+                    else
+                    {
+                        waitpid(pid, &status, WNOHANG);
+                    }                    
                 }   
             }
         }            
