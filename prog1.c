@@ -43,10 +43,127 @@ int countLinesInFile()
 }
 
 
+void forking(int n)
+{
+    int pid;
+
+    int start;
+    int end;
+    int i;
+
+    switch (n)
+    {
+        case 1:
+            start = 2;
+            end = 5;
+            break;
+
+        case 2:
+            start = 6;
+            end = 8;
+            break;
+        
+        case 3:
+            start = 9;
+            end = 10;
+            break;
+        
+        case 4:
+            start = 11;
+            end = 11;
+            break;
+
+        case 6:
+            start = 12;
+            end = 13;
+            break;
+
+        case 7:
+            start = 14;
+            end = 14;
+            break;
+
+        case 9:
+            start = 15;
+            end = 15;
+            break;
+
+        case 12:
+            start = 16;
+            end = 16;
+            break;    
+        
+        default:
+            start = 1;
+            end = 0;
+            break;
+    }
+
+    int numOfLines = countLinesInFile();
+    
+    while (numOfLines != (n-1))
+    {
+        if (!(numOfLines >= 0))
+        {
+            perror("Problème avec le fichier de suivi des processus\n");
+            exit(EXIT_FAILURE);
+        }
+        numOfLines = countLinesInFile();
+    }
+    usleep(100000);
+    writeNumInFile(n);
+    printf("Process %d n'est plus bloqué, trouve %d lignes, attendu %d\n", n, numOfLines, n-1);
+                
+    for (i = start; i <= end; i++)
+    {
+        pid = fork();
+        if ( pid == -1)
+        {
+            perror("Impossible de créer le fils\n");
+            exit(EXIT_FAILURE);
+        }
+        else if (pid == 0)
+        {
+            printf("Ici %d, mon pid est %d, le pid de mon père %d est %d \n", i, getpid(), n, getppid());
+            forking(i);
+            break;
+        }
+    }
+
+    if(pid != 0)
+    {
+        //printf("Process %d, attente deces des fils\n", n);
+        while( i > start)
+        {
+        
+            if (waitpid(-1, NULL, WNOHANG) > 0)
+            {
+                //printf("Fils %d of %d die\n", p, n);
+                i--;
+            }
+            usleep(100000);
+        }
+    }
+
+    exit(0);
+}
 
 int main(int argc, char const *argv[])
 {
-    /*begining of initialisation*/
+    FILE * fp;
+    fp = fopen (FILENAME, "w");     //erase an eventual already existing file
+    fclose(fp);
+
+    forking(1);
+
+    return 0;
+}
+
+
+/*
+int main(int argc, char const *argv[])
+{
+   
     int n = 1; //the process number in the specified tree order
     int numOfLines; 
     pid_t pid;
@@ -56,7 +173,7 @@ int main(int argc, char const *argv[])
     fp = fopen (FILENAME, "w");
     fprintf(fp, "%d\n", n); //each process will register its order in the tree on a new line
     fclose(fp);
-    /*end of initialisation*/
+    
 
     printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", n, getpid(), getppid());
 
@@ -339,5 +456,6 @@ int main(int argc, char const *argv[])
         }            
     }
     
-    return 0;
+    exit(0);
 }
+*/
