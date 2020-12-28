@@ -7,19 +7,31 @@
 #define CONFIG_SIZE (512)
 
 typedef struct application {
-  char name[CONFIG_SIZE];
-  char path[CONFIG_SIZE];
-  char arguments[];
+  char *name;
+  char *path;
+  char **arguments;
 } application;
+
+int getNbApplications(char *str);
+int countLinesInStr(char *str);
+void allocatePointer(void *ptr, int size);
+void trim (char *src, char *dest);
+int parse_lineKeyValues(char *str, char *key, char *values);
+int parse_list_appli();
+void print_config();
+int getNbApplications(char *str);
 
 application *apps;
 
-
+void printDebug(char *str, char *debug)
+{
+  printf("%s %s", str, debug);
+}
 int countLinesInStr(char *str) 
 {
    int linesCount=0;
 
-   while((str++ != '\0') 
+   while(*str++ != '\0') 
    {
       if(*str=='\n')
       { linesCount++; }
@@ -28,7 +40,27 @@ int countLinesInStr(char *str)
    return linesCount;
 }
 
-// trim the string
+//Allocate or reallocate the ptr of the given size (in byte)
+void allocatePointer(void *ptr, int size)
+{
+  if (ptr == NULL)
+  {
+    ptr = malloc(size);
+  }
+  else
+  {
+    free(ptr);
+    ptr = malloc(size);
+  }
+  
+  if (ptr == NULL)
+  {
+    perror("Mémoire pleine\n");
+    exit(EXIT_FAILURE);
+  }
+}
+
+// trim the string, dest and src may be the same pointer, dest is however (re)allocateed to fit the trimmed string
 void trim (char *src, char *dest)
 {
   if (!src)
@@ -51,6 +83,8 @@ void trim (char *src, char *dest)
   // remove leading whitespace
   for (q = src; (q < ptr && isspace(*q)); q++);
 
+  allocatePointer(dest, (strlen(q)+1) * sizeof(char *));
+
   while (q < ptr)
   { *dest++ = *q++; }
 
@@ -60,8 +94,8 @@ void trim (char *src, char *dest)
 
 /*Split the given line in str on '=' to parse it for a trimmed key having trimmed values associated.
 If no '=' found to split the string on, no key is set and the whole line is considered to be values.
-Returns 0 if the line was empty (or just whitespaces), 1 if only values has been populated, 2 if key and values were found, 
-3 if only key has been populated.*/
+Returns 0 if the line was empty (or just whitespaces), 3 if only values has been populated, 2 if key and values were found, 
+1 if only key has been populated.*/
 int parse_lineKeyValues(char *str, char *key, char *values)
 {
   char *token;
@@ -75,15 +109,16 @@ int parse_lineKeyValues(char *str, char *key, char *values)
 
   if ((token = strtok(str, "=")) == NULL)
   {
-    strcpy(temp, values);  //Copy str to values, but trimmed
-    return 1;
+    allocatePointer(values, (strlen(temp)) * sizeof(char *));
+    strcpy(values, temp);  //Copy str to values, but trimmed
+    return 3;
   }
   else
   {
     trim(token, key); //copy the trimmed first part of str to key
     
     if ((token = strtok(str, "=")) == NULL)
-    { return 3; }
+    { return 1; }
     else
     {
       trim(token, values); //copy the trimmed last part of str to values
@@ -94,7 +129,7 @@ int parse_lineKeyValues(char *str, char *key, char *values)
 
 
 
-int parse_list_appli(application *apps)
+int parse_list_appli()
 {
   FILE *f = fopen(FILENAME, "r");
   if (f == NULL)
@@ -108,6 +143,7 @@ int parse_list_appli(application *apps)
   size_t len = 0;
   ssize_t nRead;
   int line_number = 0;
+  int nbApp;
 
   if (getline(&line, &len, f) > 0)
   {
@@ -116,18 +152,17 @@ int parse_list_appli(application *apps)
     int nbApp = getNbApplications(line);
     if (nbApp >= 0)
     {
-      apps = malloc( sizeof(application)*nbApp );
+      allocatePointer(apps, sizeof(application)*nbApp);
     }
     else
     {
-      fprintf(stderr, "[CONFIG] Erreur, ligne: %s\n", line_number);
-      printf("[CONFIG] Ligne: %s \n Attendu: nombre_applications\n", line_number);
+      fprintf(stderr, "[CONFIG] Attendu: nombre_applications, ligne: %d\n", line_number);
       exit(EXIT_FAILURE);
     }    
   }
   else
   {
-    perror("[CONFIG]Erreur inconnue lors de la lecture du fichier de configuration\n");
+    perror("[CONFIG] Erreur lors de la lecture du fichier de configuration\n");
     exit(EXIT_FAILURE);
   }
 
@@ -135,12 +170,14 @@ int parse_list_appli(application *apps)
   char *values;
   int numCurrentApp = 1;
   int appNbArguments = -1;
+  int hasName, hasPath = 0;
+  int readArguments;
 
   while ((nRead = getline(&line, &len, f)) != -1) 
   {
     line_number++;
 
-    if ( numCurrentApp > sizeof(apps) )
+    if ( numCurrentApp > nbApp )
     {
       printf("[CONFIG] Le nombre d'applications spécifié a été obtenu mais il reste des lignes, elles sont ignorées\n");
       break;
@@ -152,32 +189,133 @@ int parse_list_appli(application *apps)
 
     switch (parse_lineKeyValues(line, key, values))
     {
+      //ligne vide
       case 0:
-        /* code */
+        if (appNbArguments >= 0 && readArguments == appNbArguments && (hasName & hasPath))
+        {
+          printf("L'app %d nommée %s a bien été ajoutée\n", numCurrentApp, apps[numCurrentApp].name);
+          hasName, hasPath = 0;
+          appNbArguments = -1;
+          readArguments = 0;
+          numCurrentApp++;
+        }
+        else
+        {
+          fprintf(stderr, "[CONFIG] Attendu: les clés name, path, nombre_arguments et arguments. Trouvé: ligne vide. ligne %d\n", line_number);
+          exit(EXIT_FAILURE);
+        }
+        
         break;
 
+      //Seule la clé a été trouvée
       case 1:
-        /* code */
+        if (strcmp(key, "arguments"))
+        {
+          if (appNbArguments >= 0)
+          {
+            for (readArguments = 0; readArguments < appNbArguments; readArguments++)
+            {
+              line_number++;
+              if (getline(&line, &len, f) != -1)
+              {
+                trim(line, apps[numCurrentApp].arguments[readArguments]);
+                readArguments++;
+              }
+              else
+              {
+                fprintf(stderr, "[CONFIG] Fin du fichier inattendue. ligne %d\n", line_number);
+                exit(EXIT_FAILURE);
+              }            
+            }
+          }
+        }
+        else
+        {
+          fprintf(stderr, "[CONFIG] Attendu: valeur de la clé %s. Trouvé: valeur vide. ligne %d\n", key, line_number);
+          exit(EXIT_FAILURE);
+        }
+        
         break;
 
+      //Clé et valeur ont été trouvées
       case 2:
-        /* code */
+        if (strcmp(key, "name"))
+        {
+          allocatePointer(apps[numCurrentApp-1].name, sizeof(char *)*strlen(values));
+          strcpy(apps[numCurrentApp-1].name, values);
+        }
+        else if (strcmp(key,"path"))
+        {
+          allocatePointer(apps[numCurrentApp-1].path, sizeof(char *)*strlen(values));
+          strcpy(apps[numCurrentApp-1].path, values);
+        }
+        else if (strcmp(key, "nombre_arguments"))
+        {
+          if (isdigit(values))
+          {
+            appNbArguments = atoi(values);
+
+            if (appNbArguments >= 0)
+            {
+              allocatePointer(apps[numCurrentApp-1].arguments, appNbArguments*sizeof(char *));
+            }
+            else
+            {
+              fprintf(stderr, "[CONFIG] nombre_arguments n'a pas une valeur correcte, ligne %d\n", line_number);
+              exit(EXIT_FAILURE);
+            }
+          }
+          else
+          {
+            fprintf(stderr, "[CONFIG] nombre_arguments n'a pas un nombre en valeur, ligne %d\n", line_number);
+            exit(EXIT_FAILURE);
+          }          
+        }
+        else if (strcmp(key, "arguments"))
+        {
+          fprintf(stderr, "[CONFIG] Les arguments doivent être placées sur une nouvelle ligne, ligne %d\n", line_number);
+          exit(EXIT_FAILURE);
+        }
+        else
+        {
+          fprintf(stderr, "[CONFIG] Clé inattendue, ligne %d\n", line_number);
+          exit(EXIT_FAILURE);
+        }
+        
         break;
       
+      //La ligne ne contenait pas de '='
       case 3:
-        /* code */
-        break;
-      
-      default:
+        fprintf(stdout, "[CONFIG] Ligne inattendue, elle est ignorée, ligne %d\n", line_number);
         break;
     }
   }
+
+  if (readArguments != appNbArguments)
+  {
+    fprintf(stderr, "[CONFIG] Problème au niveau des arguments de la dernière app, ligne %d\n", line_number);
+    exit(EXIT_FAILURE);
+  }
+  
 
   if (line)
   { free(line); }
 }
 
-
+void print_config()
+{
+  for (int i = 0; i < (sizeof(apps)/sizeof(application *)); i++)
+  {
+    printf("L'application '%s' est au chemin '%s'. Elle prend comme arguments:\n", apps[i].name, apps[i].path);
+    
+    for (int j = 0; j < (sizeof(apps[i].arguments)/sizeof(char *)); j++)
+    {
+      printf("%s\n", apps[i].arguments[j]); 
+    }
+    printf("\n");
+  }
+  
+}
 
 int getNbApplications(char *str)
 {
@@ -208,15 +346,15 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  
+  parse_list_appli();
   
 
-  while (fgets(buf, sizeof(buf), f)) 
+ /* while (fgets(buf, sizeof(buf), f)) 
   {
     line_number++;
     err = parse_listAppli(buf, apps);
     if (err) fprintf(stderr, "error line %d: %d\n", line_number, err);
-  }
-  print_config(apps);
+  }*/
+  print_config();
   return 0;
 }
