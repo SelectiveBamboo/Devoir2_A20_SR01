@@ -52,3 +52,14 @@ Module.symvers
 Mkfile.old
 dkms.conf
 .vscode/settings.json
+ex3/ApplicationManager
+ex3bis/app
+ex3bis/ApplicationManager
+ex3bis/ApplicationManager.c
+ex3bis/ApplicationManager.c.old
+ex3bis/get_time.c
+ex3bis/list_appli.txt
+ex3bis/mise_en_veille.txt
+ex3bis/network_manager.c
+ex3bis/power_manager.c
+ex3bis/time_manager.c
