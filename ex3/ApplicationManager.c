@@ -32,8 +32,7 @@ char *trim (char *src); // return the trimmed string s
 void parse_list_appli(); //Parse the config file {FILENAME} to get the list of application
 void print_config(); //Print the current list of application
 int isNumber(char *str); //Tell whether the given string is a natural number
-int numberIndexLookup (int number); //Get the index in the forkedApps array corresponding to the given number (used for PID)
-static void sigchld_handler(int sig, siginfo_t *info, void *ucontext); //The hangler for SIGCHILD
+int pidIndexLookup (int number); //Get the index in the forkedApps array corresponding to the given number (used for PID)
 static void sigusr1_handler(int sig, siginfo_t *info, void *ucontext); //The hangler for SIGCUSR1
 
 void
@@ -268,12 +267,11 @@ parse_list_appli()
           readArguments = 0;
           numCurrentApp++;
         }
-    freePointer(key);
-    freePointer(values);
   }
 
-  freePointer(line);
+  freePointer(line); //Peu utile puisque retourne 2 ligne après.
   fclose(f);
+  return;
 }
 
 //Print the current list of application
@@ -366,49 +364,19 @@ forkingApps()
 
 //Get the index in the forkedApps array corresponding to the given number (used for PID)
 int 
-numberIndexLookup (int number)
+pidIndexLookup (int pid)
 {
   int i = 0;
   
   while( i < nbApp )
   {
-    if (forkedApps[i] == number)
+    if (forkedApps[i] == pid)
       return i;
 
     i++;
   }
 
   return -1;
-}
-
-//The hangler for SIGCHILD
-static void 
-sigchld_handler(int sig, siginfo_t *info, void *ucontext)
-{
-  
-  //pid_t pid = wait(NULL);
-
-  pid_t pid = info->si_pid;
-
-
-  int i = numberIndexLookup(pid);
-
-  if(i != -1)
-  {
-    //printf("L'application %s s'est arrêtée.\n", apps[i].name);
-    char *s = allocatePointer((31+strlen(apps[i].name))*sizeof(char));
-    strcpy(s, "");
-    //s = strcat(strcat("L'application ", apps[i].name), "s'est arrêtée");
-    s = strcat(s, "L'application ");
-    s = strcat(s, apps[i].name);
-    s = strcat(s, " s'est arrêtée\n");
-    write(1, s, strlen(s)+1);
-  }
-  else
-    write(2, "Inattendu, SIGCHLD envoyé par un processus inconnu\n", 53);
-    //fprintf(stderr, "Inattendu, SIGCHLD envoyé par un processus inconnu: %d\n", pid);
-  
-  return;
 }
 
 //The handler for SIGUSR1
@@ -421,7 +389,7 @@ sigusr1_handler(int sig, siginfo_t *info, void *ucontext)
   pid = info->si_pid;
 
 
-  int i = numberIndexLookup(pid);
+  int i = pidIndexLookup(pid);
 
   if(i != -1 && !strcmp(apps[i].name, "Power Manager"))
     flag_shutdown = 1;
@@ -435,7 +403,7 @@ startApp(application appToStart)
 {
   char **args = allocatePointer(sizeof(char *)*(appToStart.nargs + 2));
 
-  args[0] = allocatePointer(sizeof(char)*(strlen(appToStart.name) + 1));
+  args[0] = allocatePointer(sizeof(char)*(strlen(appToStart.path) + 1));
   strcpy(args[0], appToStart.path); 
 
   
@@ -465,12 +433,8 @@ main(int argc, char *argv[])
   struct sigaction sa;
   sa.sa_flags = SA_SIGINFO;
 	sa.sa_sigaction = sigusr1_handler;
-
-  struct sigaction sig;
-  sig.sa_flags = SA_SIGINFO;
-	sig.sa_sigaction = sigchld_handler;
   
-  if( sigaction(SIGCHLD, &sig, NULL) != 0 || sigaction(SIGUSR1, &sa, NULL) != 0 )
+  if( sigaction(SIGUSR1, &sa, NULL) != 0 )
   {
     perror("Erreur fatale dans la gestion des signaux");
     exit(EXIT_FAILURE);
@@ -484,10 +448,15 @@ main(int argc, char *argv[])
     pid_t deadChild = waitpid(-1, NULL, WNOHANG);
     if (deadChild > 0)
     {
-      int indexOfDeathChild = numberIndexLookup(deadChild);
+      int indexOfDeadChild = pidIndexLookup(deadChild);
      
-      if (indexOfDeathChild != -1)
-        forkedApps[indexOfDeathChild] = -1;
+      if (indexOfDeadChild != -1)
+      {
+        forkedApps[indexOfDeadChild] = -1;
+        printf("[ApplicationManager] L'application '%s' s'est arrêtée.\n", apps[indexOfDeadChild].name);
+      }
+      else
+        fprintf(stderr, "Arrêt d'un processus incoonu. PID: %d", deadChild);
       
       i--;
     }
@@ -499,11 +468,11 @@ main(int argc, char *argv[])
         if (forkedApps[j] > 0)
           kill(forkedApps[j], SIGTERM); 
       }
-      printf("Il est toujours l'heure de faire une sieste\n");
+      printf("[ApplicationManager] Il est toujours l'heure de faire une sieste.\n");
       flag_shutdown = 0;
     }
     
-    usleep(10000);
+    usleep(1000);
   }
   
   return 0;
