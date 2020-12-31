@@ -16,43 +16,32 @@ typedef struct application {
   char **arguments;
 } application;
 int nbApp;
-int *forkedApps;
+int *forkedApps; //An array to store the PIDs of the app process. Index of process correpsond to index of their app in apps array
 
-int flag_shutdown = 0;
+application *apps; //apps array, to store the configuration for each app to launch (Got from the config file)
+
+int flag_shutdown = 0; //Whether it should shutdown or not, depending on SIGUSR1 received by power_manager
 
 void forkingApps();
 int startApp(application appToStart);
 int getNbApplications(char *str);
-int countLinesInStr(char *str);
 void *allocatePointer(int size);
+void freePointer(void *ptr);
 char *trim (char *src);
 int parse_lineKeyValues(char *str, char *key, char *values);
 void parse_list_appli();
 void print_config();
 int isNumber(char *str);
 int getNbApplications(char *str);
-
-application *apps;
+int numberIndexLookup (int number);
+static void sigchld_handler(int sig, siginfo_t *info, void *ucontext);
+static void sigusr1_handler(int sig, siginfo_t *info, void *ucontext);
 
 void
 printDebug(char *str, char *val, int debugLevel)
 {
   if (debugLevel <= DEBUG)
     printf("%s {%s}\n", str, val);
-}
-
-int
-countLinesInStr(char *str) 
-{
-  int linesCount=0;
-
-  while(*str++ != '\0') 
-  {
-    if(*str=='\n')
-      linesCount++;
-  }
-
-  return linesCount;
 }
 
 //Allocate the ptr of the given size (in byte)
@@ -76,8 +65,7 @@ freePointer(void *ptr)
     free(ptr);
 }
 
-
-// trim a string
+// return the trimmed string s
 char *
 trim(char * s)
 {
@@ -89,6 +77,7 @@ trim(char * s)
   return strndup(s, l);
 }
 
+//Parse the config file {FILENAME} to get the list of application
 void
 parse_list_appli()
 {
@@ -107,7 +96,7 @@ parse_list_appli()
     exit(EXIT_FAILURE);
   }
  
- /* read first line to get the number of application defined */ 
+  //read first line to get the number of application defined
   if (getline(&line, &len, f) > 0)
   {
 
@@ -117,13 +106,12 @@ parse_list_appli()
     nbApp = getNbApplications(line);
     if (nbApp >= 0)
     {
-      /* allocate or storage of information for application to start */
-      
+      //allocate the storage of information for application to start 
       apps = allocatePointer(sizeof(application)*nbApp);
     }
     else
     {
-      /* we do not have the required line, get out */
+      //do not have the required line, get out
       fclose(f);
       fprintf(stderr, "[CONFIG] Attendu: nombre_applications, ligne: %d\n", line_number);
       exit(EXIT_FAILURE);
@@ -136,7 +124,7 @@ parse_list_appli()
     exit(EXIT_FAILURE);
   }
 
-  // parsing du reste du fichier ligne par ligne
+  // Parse the rest of the file line by line
   while (getline(&line, &len, f) != -1) 
   {
     char *key;
@@ -147,7 +135,7 @@ parse_list_appli()
 
     line_number++;
 
-    // test si on excede le nombre d'appli declarees
+    // test whether exceeding the number of declared apps, but won't exit or what
     if ( numCurrentApp > nbApp )
     {
       printf("[CONFIG] Le nombre d'applications spécifié (%d) est suppérieur à celui attendu (%d), elles sont ignorées\n", numCurrentApp +1, nbApp);
@@ -157,7 +145,7 @@ parse_list_appli()
     // Extract key/value from delimiter = but trimmed and 
     // set the parsing status to specify the action to perform
     tmp = trim(line);
-    //printDebug("read line:", tmp, 2);
+
     if (strlen(tmp) == 0)
     {
       status = 0;   //The line is empty
@@ -181,11 +169,11 @@ parse_list_appli()
 
     switch (status)
     {
-      //ligne vide
+      //Empty line
       case 0:
         break;
 
-      //Seule la clé a été trouvée
+      //the sole key has been found
       case 1:
         if (!strcmp(key, "arguments"))
         {
@@ -216,7 +204,7 @@ parse_list_appli()
         
         break;
 
-      //Clé et valeur ont été trouvées
+      //key and values found
       case 2:
         if (!strcmp(key, "name"))
         {
@@ -268,12 +256,13 @@ parse_list_appli()
         
         break;
       
-      //La ligne ne contenait pas de '='
+      //Line without '='
       case 3:
         fprintf(stdout, "[CONFIG] Ligne inattendue, elle est ignorée, ligne %d\n", line_number);
         break;
     }
 
+    //if an appplication has been fully inquired, reset and let's do the next one
     if (appNbArguments >= 0 && readArguments == appNbArguments && (hasName & hasPath))
         {
           printf("L'app %d nommée '%s' a bien été ajoutée\n", numCurrentApp +1, apps[numCurrentApp].name);
@@ -290,6 +279,7 @@ parse_list_appli()
   fclose(f);
 }
 
+//Print the current list of application
 void 
 print_config()
 {
@@ -307,15 +297,18 @@ print_config()
   
 }
 
+//Get the number of application to generate upon a string 
 int 
 getNbApplications(char *str)
 {
   int nbApplications = -1;
   char *token;
 
+  //parse key / values
   token = strtok(str, "=");
   token = trim(token);
 
+  //The key must be nombre_applications to get processed
   if (!strcmp(token, "nombre_applications"))
   {
     token = strtok(NULL, "=");
@@ -327,6 +320,7 @@ getNbApplications(char *str)
   return nbApplications;
 }
 
+//Tell whether the given string is a natural number
 int
 isNumber(char *str)
 {
@@ -342,6 +336,7 @@ isNumber(char *str)
   return 1;
 }
 
+//Create the childs bexoming the apps
 void
 forkingApps()
 {
@@ -368,8 +363,11 @@ forkingApps()
       } 
     }       
   }
+
+  return;
 }
 
+//Get the index in the forkedApps array corresponding to the given number (used for PID)
 int 
 numberIndexLookup (int number)
 {
@@ -382,25 +380,18 @@ numberIndexLookup (int number)
 
     i++;
   }
-    
 
   return -1;
 }
 
-
-siginfo_t received_information;
-
+//The hangler for SIGCHILD
 static void 
 sigchld_handler(int sig, siginfo_t *info, void *ucontext)
 {
   
   //pid_t pid = wait(NULL);
-  memmove(&received_information,
-          info,
-          sizeof(received_information)
-         );
 
-  pid_t pid = received_information.si_pid;
+  pid_t pid = info->si_pid;
 
 
   int i = numberIndexLookup(pid);
@@ -409,6 +400,7 @@ sigchld_handler(int sig, siginfo_t *info, void *ucontext)
   {
     //printf("L'application %s s'est arrêtée.\n", apps[i].name);
     char *s = malloc(256*sizeof(char));
+    strcpy(s, "");
     //s = strcat(strcat("L'application ", apps[i].name), "s'est arrêtée");
     s = strcat(s, "L'application ");
     s = strcat(s, apps[i].name);
@@ -421,10 +413,10 @@ sigchld_handler(int sig, siginfo_t *info, void *ucontext)
   return;
 }
 
+//The handler for SIGUSR1
 static void 
 sigusr1_handler(int sig, siginfo_t *info, void *ucontext)
 {
-  
   //pid_t pid = wait(NULL);
 
   pid_t pid;
@@ -433,19 +425,13 @@ sigusr1_handler(int sig, siginfo_t *info, void *ucontext)
 
   int i = numberIndexLookup(pid);
 
-  if(i != -1)
-  {
-    if (!strcmp(apps[i].name, "power_manager"))
-    {
-      flag_shutdown = 1;
-    }
-    
-  }
-
-  return;
+  if(i != -1 && !strcmp(apps[i].name, "Power Manager"))
+    flag_shutdown = 1;
   
+  return;  
 }
 
+//Start the given appToSTart in the current process
 int
 startApp(application appToStart)
 {
@@ -453,22 +439,18 @@ startApp(application appToStart)
 
   args[0] = allocatePointer(sizeof(char)*(strlen(appToStart.name) + 1));
   strcpy(args[0], appToStart.path); 
-  printDebug("bbbbbbb", args[0], 1 );
+
   
   for (int i = 1; i <= appToStart.nargs ; i++)
   {
-    printDebug("aaaaaa", appToStart.arguments[i - 1], 1 );
     args[i] = allocatePointer(sizeof(char)*(strlen(appToStart.arguments[i - 1]) + 1));
     strcpy(args[i], appToStart.arguments[i - 1]);
   }
 
   args[appToStart.nargs+1] = NULL;
 
-  printDebug("going to execute :", appToStart.name, 1);
-
   return execv(appToStart.path, args);
 }
-
 
 int 
 main(int argc, char *argv[]) 
@@ -507,11 +489,10 @@ main(int argc, char *argv[])
       int indexOfDeathChild = numberIndexLookup(deadChild);
      
       if (indexOfDeathChild != -1)
-        forkedApps[indexOfDeathChild] = NULL;
+        forkedApps[indexOfDeathChild] = -1;
       
       i--;
     }
-      
 
     if (flag_shutdown)
     {
@@ -520,13 +501,13 @@ main(int argc, char *argv[])
         if (forkedApps[j] > 0)
           kill(forkedApps[j], SIGTERM); 
       }
-      
+      printf("Il est toujours l'heure de faire une sieste\n");
+      flag_shutdown = 0;
     }
     
     usleep(10000);
   }
   
-
   return 0;
 }
 

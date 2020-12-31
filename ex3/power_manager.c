@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 
 void main (int argc , char *argv[]) {
 
@@ -15,7 +16,7 @@ void main (int argc , char *argv[]) {
 	fclose(fp);
 	if(c =='1') {
          printf("[power manager] mise en veille en cours ...\n");
-         /* ajoutez vos modification ici */
+         kill(getppid(), SIGUSR1);
 	  fp = fopen (argv[1], "w"); 
 	  fputs("0", fp);
    	  fclose(fp);
