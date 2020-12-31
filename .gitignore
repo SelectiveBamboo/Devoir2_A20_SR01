@@ -63,3 +63,7 @@ ex3bis/mise_en_veille.txt
 ex3bis/network_manager.c
 ex3bis/power_manager.c
 ex3bis/time_manager.c
+ex3/get_time
+ex3/network_manager
+ex3/power_manager
+ex3/test.c
