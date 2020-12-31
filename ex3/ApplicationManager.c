@@ -115,6 +115,7 @@ parse_list_appli()
   }
   else
   {
+    //Not any line read
     fclose(f);
     perror("[CONFIG] Erreur lors de la lecture du fichier de configuration\n");
     exit(EXIT_FAILURE);
@@ -138,7 +139,7 @@ parse_list_appli()
       break;
     }
 
-    // Extract key/value from delimiter = but trimmed and 
+    // Extract key/value from delimiter '=' but trimmed and 
     // set the parsing status to specify the action to perform
     tmp = trim(line);
 
@@ -173,6 +174,7 @@ parse_list_appli()
       case 1:
         if (!strcmp(key, "arguments"))
         {
+          //Found the key 'arguments', going to get the specified number of argument  
           if (appNbArguments >= 0)
           {
             for (readArguments = 0; readArguments < appNbArguments; readArguments++)
@@ -203,18 +205,21 @@ parse_list_appli()
       //key and values found
       case 2:
         if (!strcmp(key, "name"))
+        //Get the name
         {
           apps[numCurrentApp].name = allocatePointer(sizeof(char)*(strlen(values)+1));
           strcpy(apps[numCurrentApp].name, values);
 	        hasName = 1;
         }
         else if (!strcmp(key,"path"))
+        //Get the path
         {
           apps[numCurrentApp].path = allocatePointer(sizeof(char)*(strlen(values)+1));
           strcpy(apps[numCurrentApp].path, values);
 	        hasPath = 1;
         }
         else if (!strcmp(key, "nombre_arguments"))
+        //Get the number of arguments
         {
           if (isNumber(values))
           {
@@ -240,12 +245,14 @@ parse_list_appli()
           }          
         }
         else if (!strcmp(key, "arguments"))
+        //Found the key and  value behind, although the arguments key should have its value in new lines
         {
           fprintf(stderr, "[CONFIG] Les arguments doivent être placées sur une nouvelle ligne, ligne %d\n", line_number);
           exit(EXIT_FAILURE);
         }
         else
         {
+          //unrecogniwed key
           fprintf(stderr, "[CONFIG] Clé inattendue, ligne %d\n", line_number);
           exit(EXIT_FAILURE);
         }
@@ -303,7 +310,7 @@ getNbApplications(char *str)
   token = strtok(str, "=");
   token = trim(token);
 
-  //The key must be nombre_applications to get processed
+  //The key must be nombre_applications to be processed
   if (!strcmp(token, "nombre_applications"))
   {
     token = strtok(NULL, "=");
@@ -338,23 +345,23 @@ forkingApps()
   forkedApps = allocatePointer(nbApp*sizeof(int));
   for (int i = 0; i < nbApp; i++)
   {
-    forkedApps[i] = fork();
+    forkedApps[i] = fork(); //fork's returned value stored in a PID array, useful for the parent
 
-    if (forkedApps[i] == -1)
+    if (forkedApps[i] == -1) //Something went wrong
     {
       perror("[AppManagement] Impossible de lancer les applications\n");
       exit(EXIT_FAILURE);
     }
-    else if (forkedApps[i] == 0)
+    else if (forkedApps[i] == 0) //It's a child !
     {
-      if (startApp(apps[i]) == -1)
+      if (startApp(apps[i]) == -1) //startApp should not return actually
       {
         fprintf(stderr, "[AppManagement] Erreur de l'application '%s'\n", apps[i].name);
         exit(EXIT_FAILURE);
       }
       else
       {
-        exit(EXIT_SUCCESS);
+        exit(EXIT_FAILURE);
       } 
     }       
   }
@@ -362,7 +369,7 @@ forkingApps()
   return;
 }
 
-//Get the index in the forkedApps array corresponding to the given number (used for PID)
+//Get the index in the forkedApps array corresponding to the given pid
 int 
 pidIndexLookup (int pid)
 {
@@ -383,14 +390,9 @@ pidIndexLookup (int pid)
 static void 
 sigusr1_handler(int sig, siginfo_t *info, void *ucontext)
 {
-  //pid_t pid = wait(NULL);
+  int i = pidIndexLookup(info->si_pid);
 
-  pid_t pid;
-  pid = info->si_pid;
-
-
-  int i = pidIndexLookup(pid);
-
+  //Do something only if the signal comes from Power Manager
   if(i != -1 && !strcmp(apps[i].name, "Power Manager"))
     flag_shutdown = 1;
   
@@ -401,38 +403,43 @@ sigusr1_handler(int sig, siginfo_t *info, void *ucontext)
 int
 startApp(application appToStart)
 {
-  char **args = allocatePointer(sizeof(char *)*(appToStart.nargs + 2));
+  char **args = allocatePointer(sizeof(char *)*(appToStart.nargs + 1));
 
+  // append the path to the program first
   args[0] = allocatePointer(sizeof(char)*(strlen(appToStart.path) + 1));
   strcpy(args[0], appToStart.path); 
 
-  
+  // now append the argument of the command
   for (int i = 1; i <= appToStart.nargs ; i++)
   {
     args[i] = allocatePointer(sizeof(char)*(strlen(appToStart.arguments[i - 1]) + 1));
     strcpy(args[i], appToStart.arguments[i - 1]);
   }
-
+  // terminate the list with a null
   args[appToStart.nargs+1] = NULL;
 
-  return execv(appToStart.path, args);
+  return execv(appToStart.path, args); //doesn't return if everything's gone well
 }
 
 int 
 main(int argc, char *argv[]) 
 {
+  struct sigaction sa;
+  int i = 0;
+  
   if (argc != 1) 
   {
     fprintf(stderr, "Pas besoin d'arguments pour %s\n", argv[0]);
     return 1;
   }
 
+  //Parse the configuration from file, then print it
   parse_list_appli();
   print_config();
 
-  struct sigaction sa;
+  //associating a handler
   sa.sa_flags = SA_SIGINFO;
-	sa.sa_sigaction = sigusr1_handler;
+  sa.sa_sigaction = sigusr1_handler;
   
   if( sigaction(SIGUSR1, &sa, NULL) != 0 )
   {
@@ -440,35 +447,39 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
+  //Creating the child and launching the apps runnning into
   forkingApps();
 
-  int i = nbApp;
-  while( i > 0)   //Attend la mort de ses fils
+  i = nbApp;
+  while( i > 0)   //Wait the childs to die
   {
     pid_t deadChild = waitpid(-1, NULL, WNOHANG);
     if (deadChild > 0)
+    //A child's dead
     {
-      int indexOfDeadChild = pidIndexLookup(deadChild);
+      int indexOfDeadChild = pidIndexLookup(deadChild); //Index of dead child in the apps array
      
       if (indexOfDeadChild != -1)
+      //If it was a known child...
       {
         forkedApps[indexOfDeadChild] = -1;
         printf("[ApplicationManager] L'application '%s' s'est arrêtée.\n", apps[indexOfDeadChild].name);
       }
       else
-        fprintf(stderr, "Arrêt d'un processus incoonu. PID: %d", deadChild);
+        fprintf(stderr, "Arrêt d'un processus inconnu. PID: %d", deadChild);
       
-      i--;
+      i--; //One less child to wait
     }
 
+    //if the order is received, kill the childs #Anakin Skywalker
     if (flag_shutdown)
     {
+      printf("[ApplicationManager] Extinction...\n");
       for (size_t j = 0; j < nbApp; j++)
       {
         if (forkedApps[j] > 0)
           kill(forkedApps[j], SIGTERM); 
       }
-      printf("[ApplicationManager] Il est toujours l'heure de faire une sieste.\n");
       flag_shutdown = 0;
     }
     
