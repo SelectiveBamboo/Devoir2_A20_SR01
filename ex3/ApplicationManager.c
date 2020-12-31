@@ -1,9 +1,13 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <signal.h>
+#include <wait.h> 
 
 #define FILENAME "list_appli.txt"
+#define DEBUG 0
 
 typedef struct application {
   char *name;
@@ -12,7 +16,12 @@ typedef struct application {
   char **arguments;
 } application;
 int nbApp;
+int *forkedApps;
 
+int flag_shutdown = 0;
+
+void forkingApps();
+int startApp(application appToStart);
 int getNbApplications(char *str);
 int countLinesInStr(char *str);
 void *allocatePointer(int size);
@@ -24,12 +33,11 @@ int isNumber(char *str);
 int getNbApplications(char *str);
 
 application *apps;
-int debug = 1;
 
 void
 printDebug(char *str, char *val, int debugLevel)
 {
-  if (debugLevel <= debug)
+  if (debugLevel <= DEBUG)
     printf("%s {%s}\n", str, val);
 }
 
@@ -131,7 +139,6 @@ parse_list_appli()
   // parsing du reste du fichier ligne par ligne
   while (getline(&line, &len, f) != -1) 
   {
-    char *oldapp = NULL;
     char *key;
     char *values;
     char *token;
@@ -306,7 +313,6 @@ getNbApplications(char *str)
   int nbApplications = -1;
   char *token;
 
-  //while ( (token = strtok(str, "=")) != NULL )
   token = strtok(str, "=");
   token = trim(token);
 
@@ -336,6 +342,133 @@ isNumber(char *str)
   return 1;
 }
 
+void
+forkingApps()
+{
+  forkedApps = allocatePointer(nbApp*sizeof(int));
+  for (int i = 0; i < nbApp; i++)
+  {
+    forkedApps[i] = fork();
+
+    if (forkedApps[i] == -1)
+    {
+      perror("[AppManagement] Impossible de lancer les applications\n");
+      exit(EXIT_FAILURE);
+    }
+    else if (forkedApps[i] == 0)
+    {
+      if (startApp(apps[i]) == -1)
+      {
+        fprintf(stderr, "[AppManagement] Erreur de l'application '%s'\n", apps[i].name);
+        exit(EXIT_FAILURE);
+      }
+      else
+      {
+        exit(EXIT_SUCCESS);
+      } 
+    }       
+  }
+}
+
+int 
+numberIndexLookup (int number)
+{
+  int i = 0;
+  
+  while( i < nbApp )
+  {
+    if (forkedApps[i] == number)
+      return i;
+
+    i++;
+  }
+    
+
+  return -1;
+}
+
+
+siginfo_t received_information;
+
+static void 
+sigchld_handler(int sig, siginfo_t *info, void *ucontext)
+{
+  
+  //pid_t pid = wait(NULL);
+  memmove(&received_information,
+          info,
+          sizeof(received_information)
+         );
+
+  pid_t pid = received_information.si_pid;
+
+
+  int i = numberIndexLookup(pid);
+
+  if(i != -1)
+  {
+    //printf("L'application %s s'est arrêtée.\n", apps[i].name);
+    char *s = malloc(256*sizeof(char));
+    //s = strcat(strcat("L'application ", apps[i].name), "s'est arrêtée");
+    s = strcat(s, "L'application ");
+    s = strcat(s, apps[i].name);
+    s = strcat(s, " s'est arrêtée\n");
+    write(1, s, strlen(s)+1);
+  }
+  else
+    fprintf(stderr, "Inattendu, SIGCHLD envoyé par un processus inconnu: %d\n", pid);
+  
+  return;
+}
+
+static void 
+sigusr1_handler(int sig, siginfo_t *info, void *ucontext)
+{
+  
+  //pid_t pid = wait(NULL);
+
+  pid_t pid;
+  pid = info->si_pid;
+
+
+  int i = numberIndexLookup(pid);
+
+  if(i != -1)
+  {
+    if (!strcmp(apps[i].name, "power_manager"))
+    {
+      flag_shutdown = 1;
+    }
+    
+  }
+
+  return;
+  
+}
+
+int
+startApp(application appToStart)
+{
+  char **args = allocatePointer(sizeof(char *)*(appToStart.nargs + 2));
+
+  args[0] = allocatePointer(sizeof(char)*(strlen(appToStart.name) + 1));
+  strcpy(args[0], appToStart.path); 
+  printDebug("bbbbbbb", args[0], 1 );
+  
+  for (int i = 1; i <= appToStart.nargs ; i++)
+  {
+    printDebug("aaaaaa", appToStart.arguments[i - 1], 1 );
+    args[i] = allocatePointer(sizeof(char)*(strlen(appToStart.arguments[i - 1]) + 1));
+    strcpy(args[i], appToStart.arguments[i - 1]);
+  }
+
+  args[appToStart.nargs+1] = NULL;
+
+  printDebug("going to execute :", appToStart.name, 1);
+
+  return execv(appToStart.path, args);
+}
+
 
 int 
 main(int argc, char *argv[]) 
@@ -349,8 +482,50 @@ main(int argc, char *argv[])
   parse_list_appli();
   print_config();
 
+  struct sigaction sa;
+  sa.sa_flags = SA_SIGINFO;
+	sa.sa_sigaction = sigusr1_handler;
 
+  struct sigaction sig;
+  sig.sa_flags = SA_SIGINFO;
+	sig.sa_sigaction = sigchld_handler;
+  
+  if( sigaction(SIGCHLD, &sig, NULL) != 0 || sigaction(SIGUSR1, &sa, NULL) != 0 )
+  {
+    perror("Erreur fatale dans la gestion des signaux");
+    exit(EXIT_FAILURE);
+  }
 
+  forkingApps();
+
+  int i = nbApp;
+  while( i > 0)   //Attend la mort de ses fils
+  {
+    pid_t deadChild = waitpid(-1, NULL, WNOHANG);
+    if (deadChild > 0)
+    {
+      int indexOfDeathChild = numberIndexLookup(deadChild);
+     
+      if (indexOfDeathChild != -1)
+        forkedApps[indexOfDeathChild] = NULL;
+      
+      i--;
+    }
+      
+
+    if (flag_shutdown)
+    {
+      for (size_t j = 0; j < nbApp; j++)
+      {
+        if (forkedApps[j] > 0)
+          kill(forkedApps[j], SIGTERM); 
+      }
+      
+    }
+    
+    usleep(10000);
+  }
+  
 
   return 0;
 }
