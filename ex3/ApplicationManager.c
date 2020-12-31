@@ -9,33 +9,32 @@
 #define FILENAME "list_appli.txt"
 #define DEBUG 0
 
+//Structure to store the config for apps handled
 typedef struct application {
   char *name;
   char *path;
   int nargs;
   char **arguments;
 } application;
-int nbApp;
+int nbApp;  //number of app handled
 int *forkedApps; //An array to store the PIDs of the app process. Index of process correpsond to index of their app in apps array
 
 application *apps; //apps array, to store the configuration for each app to launch (Got from the config file)
 
 int flag_shutdown = 0; //Whether it should shutdown or not, depending on SIGUSR1 received by power_manager
 
-void forkingApps();
-int startApp(application appToStart);
-int getNbApplications(char *str);
-void *allocatePointer(int size);
-void freePointer(void *ptr);
-char *trim (char *src);
-int parse_lineKeyValues(char *str, char *key, char *values);
-void parse_list_appli();
-void print_config();
-int isNumber(char *str);
-int getNbApplications(char *str);
-int numberIndexLookup (int number);
-static void sigchld_handler(int sig, siginfo_t *info, void *ucontext);
-static void sigusr1_handler(int sig, siginfo_t *info, void *ucontext);
+void forkingApps(); //Create the childs becoming the apps
+int startApp(application appToStart); //Start the given appToSTart in the current process
+int getNbApplications(char *str); //Get the number of application to generate upon a string
+void *allocatePointer(int size); //Allocate the ptr of the given size (in byte)
+void freePointer(void *ptr); //Deallocate the ptr
+char *trim (char *src); // return the trimmed string s
+void parse_list_appli(); //Parse the config file {FILENAME} to get the list of application
+void print_config(); //Print the current list of application
+int isNumber(char *str); //Tell whether the given string is a natural number
+int numberIndexLookup (int number); //Get the index in the forkedApps array corresponding to the given number (used for PID)
+static void sigchld_handler(int sig, siginfo_t *info, void *ucontext); //The hangler for SIGCHILD
+static void sigusr1_handler(int sig, siginfo_t *info, void *ucontext); //The hangler for SIGCUSR1
 
 void
 printDebug(char *str, char *val, int debugLevel)
@@ -99,8 +98,6 @@ parse_list_appli()
   //read first line to get the number of application defined
   if (getline(&line, &len, f) > 0)
   {
-
-    
     line_number++;
     
     nbApp = getNbApplications(line);
@@ -399,7 +396,7 @@ sigchld_handler(int sig, siginfo_t *info, void *ucontext)
   if(i != -1)
   {
     //printf("L'application %s s'est arrêtée.\n", apps[i].name);
-    char *s = malloc(256*sizeof(char));
+    char *s = allocatePointer((31+strlen(apps[i].name))*sizeof(char));
     strcpy(s, "");
     //s = strcat(strcat("L'application ", apps[i].name), "s'est arrêtée");
     s = strcat(s, "L'application ");
@@ -408,7 +405,8 @@ sigchld_handler(int sig, siginfo_t *info, void *ucontext)
     write(1, s, strlen(s)+1);
   }
   else
-    fprintf(stderr, "Inattendu, SIGCHLD envoyé par un processus inconnu: %d\n", pid);
+    write(2, "Inattendu, SIGCHLD envoyé par un processus inconnu\n", 53);
+    //fprintf(stderr, "Inattendu, SIGCHLD envoyé par un processus inconnu: %d\n", pid);
   
   return;
 }

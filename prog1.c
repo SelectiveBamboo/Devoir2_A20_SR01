@@ -21,6 +21,13 @@ int writeNumInFile(int n)
     FILE * fp;
 
     fp = fopen (FILENAME, "a");
+
+    if(fp==NULL) 
+   {
+      fprintf(stderr, "Problème à l'écriture du fichier \"%s\" ! Blocage du programme\n",FILENAME);
+      exit(EXIT_FAILURE);
+   }
+
     fprintf(fp, "%d\n", n);
 
     fclose(fp);
@@ -36,9 +43,10 @@ int countLinesInFile()
    int linesCount=0;
 
    fp=fopen(FILENAME,"r");
-   if(fp==NULL) {
-      fprintf(stderr, "Le fichier \"%s\" n'existe pas !\n",FILENAME);
-      return -1;
+   if(fp==NULL) 
+   {
+      fprintf(stderr, "Le fichier \"%s\" n'existe pas ! Blocage du programme\n",FILENAME);
+      exit(EXIT_FAILURE);
    }
 
    while((ch=fgetc(fp))!=EOF) 
@@ -152,11 +160,9 @@ void forking(int n)
     {
         while( i > start)   //Attend la mort de ses fils
         {
-        
             if (waitpid(-1, NULL, WNOHANG) > 0)
-            {
                 i--;
-            }
+
             usleep(10000);
         }
     }
@@ -167,8 +173,15 @@ void forking(int n)
 
 int main(int argc, char const *argv[])
 {
-    fclose(fopen (FILENAME, "w"));     //Ecrase le fichier si existant
-    
+    FILE * f = fopen (FILENAME, "w");     //Ecrase le fichier si existant
+    if(f==NULL) 
+    {
+        fprintf(stderr, "Problème avec le fichier \"%s\" ! Fin.\n",FILENAME);
+        exit(EXIT_FAILURE);
+    }
+    else
+        fclose(f);
+        
     printf("Ici %d, mon pid est %d, le pid de mon père est %d \n", 1, getpid(), getppid());
     forking(1); //Création de ses fils
 
